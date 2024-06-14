@@ -6,22 +6,29 @@ from urllib.parse import quote_plus
 from fastapi import FastAPI
 from fastapi.params import Depends
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker, declarative_base, Session
 from starlette.requests import Request
 from starlette.responses import StreamingResponse, JSONResponse
 from sqlalchemy import create_engine, Column, Integer, String, CursorResult
 
+# pip install greenlet
+# pip install aiomysql
+
 username = "totoku103"
-password = quote_plus("totoku103")
+password = quote_plus("fjdksl12!@")
 host = "192.168.0.2"
 database_name = "test"
 
 DATABASE_URL = f"mysql+pymysql://{username}:{password}@{host}/{database_name}"
-
-engine = create_engine(DATABASE_URL)
+engine = create_engine(DATABASE_URL, echo=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
 
+ASYNC_DATABASE_URL = f"mysql+aiomysql://{username}:{password}@{host}/{database_name}"
+async_engine = create_async_engine(ASYNC_DATABASE_URL, echo=True)
+AsyncSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=async_engine, class_=AsyncSession)
+
+Base = declarative_base()
 app = FastAPI()
 
 
@@ -58,6 +65,12 @@ def get_db():
         db.close()
 
 
+async def get_async_db():
+    async with AsyncSessionLocal() as session:
+        yield session
+        await session.close()
+
+
 @app.get("/1")
 def insert(session: Session = Depends(get_db)):
     for i in range(10):
@@ -71,7 +84,7 @@ def insert(session: Session = Depends(get_db)):
 @app.get("/sse/{param}")
 async def sse(param: int,
               request: Request,
-              session: Session = Depends(get_db)):
+              session: Session = Depends(get_async_db)):
     client_host = request.client.host
     client_port = request.client.port
     client_connect_time = datetime.datetime.now()
@@ -83,7 +96,7 @@ async def sse(param: int,
                 # items = session.query(ItemModel).all()
                 # data = [Item.model_validate(item).model_dump() for item in items]
                 from sqlalchemy import text
-                execute: CursorResult = session.execute(text("select now()"))
+                execute: CursorResult = await session.execute(text("select now()"))
                 result = execute.cursor.fetchone()
                 now_datetime = result[0]
 
