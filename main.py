@@ -1,6 +1,7 @@
 import asyncio
 import datetime
 import json
+import time
 from urllib.parse import quote_plus
 
 from fastapi import FastAPI
@@ -10,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker, declarative_base, Session
 from starlette.requests import Request
 from starlette.responses import StreamingResponse, JSONResponse
-from sqlalchemy import create_engine, Column, Integer, String, CursorResult
+from sqlalchemy import create_engine, Column, Integer, String, CursorResult, select
 
 # pip install greenlet
 # pip install aiomysql
@@ -96,7 +97,7 @@ async def sse(param: int,
                 # items = session.query(ItemModel).all()
                 # data = [Item.model_validate(item).model_dump() for item in items]
                 from sqlalchemy import text
-                execute: CursorResult = await session.execute(text("select now()"))
+                execute = await session.execute(text("select now()"))
                 result = execute.cursor.fetchone()
                 now_datetime = result[0]
 
@@ -124,7 +125,29 @@ async def sse(param: int,
     return StreamingResponse(get_data(), media_type="text/event-stream")
 
 
+async def get_data():
+    print("abbccc")
+    await asyncio.sleep(5)
+    return "A"
+
+
 @app.get("/sse2")
-def sse2(session: Session = Depends(get_db)):
-    d = session.query(ItemModel).first()
-    return d
+async def sse2(session: Session = Depends(get_async_db)):
+    execute = await session.execute(select(ItemModel).where(ItemModel.id == 1))
+    first = execute.scalars().first()
+    print(f"before: {first.name}")
+    await asyncio.sleep(30)
+
+    await session.refresh(first)
+    print(f"after: {first.name}")
+
+
+@app.get("/sse3")
+async def sse3(session: Session = Depends(get_db)):
+    execute = session.execute(select(ItemModel).where(ItemModel.id == 1))
+    first = execute.scalars().first()
+    print(f"before: {first.name}")
+    session.commit()
+    time.sleep(30)
+    session.refresh(first)
+    print(f"after: {first.name}")
